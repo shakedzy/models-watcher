@@ -162,7 +162,7 @@ def load_undecided_models(grace: int) -> dict[str, datetime]:
 
 def save_undecided_models(existing_undecided_models: dict[str, datetime], new_undecided_models: dict[str, datetime]) -> None:
     undecided_models = new_undecided_models | existing_undecided_models
-    undecided_models = {k: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S") for k,v in undecided_models.items()}
+    undecided_models = {k: datetime.strftime(v, "%Y-%m-%dT%H:%M:%S") for k,v in undecided_models.items()}
     try:
         with open("undecided_models.json", "w") as f:
             json.dump(undecided_models, f)
