@@ -184,6 +184,7 @@ def main():
     args = parser.parse_args()
 
     undecided_models = load_undecided_models(grace=args.grace)
+    logger.info(f"Loaded {len(undecided_models)} undecided models")
     message, new_undecided_models_list = prepare_message(undecided_model_ids=list(undecided_models.keys()), days=args.days, hours=args.hours, minutes=args.minutes, grace=args.grace)
     save_undecided_models(undecided_models, {k: datetime.now(timezone.utc) for k in new_undecided_models_list})
 
