@@ -14,6 +14,7 @@ To try and narrow down the number of models, the watcher performs several filter
 1. Time based - Only models which were created/modified in a given time-fram
 2. `model-index` - Only models with a valid `model-index` 
 3. Have dependents - Only models which are used as base models for other models (fine-tunes, quantizations, etc.)
+   - ׁIf no dependents were found (and the model is not a dependent of another), it is placed in the _undecided models_ list, and will be checked again according to the grace-time specified.
 
 The watcher only consideres models which match all the above criterias. 
 
