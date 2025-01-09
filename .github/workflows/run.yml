@@ -24,8 +24,24 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - uses: actions/checkout@v4
+      with:
+        ref: 'undecided-models'  
+        path: 'umodels'
+
     - name: Run Script
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
-      run: python watcher.py --hours 1
+      run: |
+        cp umodels/undecided_models.json .
+        python watcher.py --hours 1
+        rm umodels/undecided_models.json
+        cp undecided_models.json umodels/undecided_models.json
+        cd umodels
+        git config --global user.name ${{ secrets.USERNAME }}
+        git config --global user.email ${{ secrets.EMAIL_ADDRESS }}
+        git add .
+        CURRENT_TIME=$(date +'%Y-%m-%d %H:%M:%S')
+        git commit -m "Automated commit: $CURRENT_TIME" || echo "No changes to commit"
+        git push origin undecided-models
