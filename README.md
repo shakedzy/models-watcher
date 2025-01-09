@@ -9,6 +9,14 @@ Unlike the `huggingface_hub`'s `HfApi` object, which cannot tell apart new from 
 found on Hugging Face's website (such as the model tree and) to extract additional information about each model, thus deciding if it's
 new or modified.
 
+## Which models is it looking for?
+To try and narrow down the number of models, the watcher performs several filters:
+1. Time based - Only models which were created/modified in a given time-fram
+2. `model-index` - Only models with a valid `model-index` 
+3. Have dependents - Only models which are used as base models for other models (fine-tunes, quantizations, etc.)
+
+The watcher only consideres models which match all the above criterias. 
+
 
 ## Running yourself
 If you'd like to run this script yourself, you'll first need a Bot Token and a Group ID.
