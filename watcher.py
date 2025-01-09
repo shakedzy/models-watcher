@@ -152,7 +152,7 @@ def load_undecided_models(grace: int) -> dict[str, datetime]:
     grace_time_threshold = datetime.now(timezone.utc) - grace_delta
     try:
         with open("undecided_models.json", "r") as f:
-            models = {k: datetime.strftime(v, "%Y-%m-%dT%H:%M:%S") for k, v in json.load(f).items()}
+            models = {k: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S") for k, v in json.load(f).items()}
             models = {k: v for k,v in models.items() if v >= grace_time_threshold}
             return models
     except Exception as e:
