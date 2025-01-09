@@ -180,11 +180,11 @@ def main():
     parser.add_argument("--days", type=int, default=0, help="Number of days to look back")
     parser.add_argument("--hours", type=int, default=0, help="Number of hours to look back")
     parser.add_argument("--minutes", type=int, default=0, help="Number of minutes to look back")
-    parser.add_argument("--grace-time", type=int, default=6, help="Number of hours of grace time for undecided models")
+    parser.add_argument("--grace-time", dest='grace', type=int, default=6, help="Number of hours of grace time for undecided models")
     args = parser.parse_args()
 
     undecided_models = load_undecided_models(grace=args.grace_time)
-    message, new_undecided_models_list = prepare_message(undecided_model_ids=undecided_models.keys(), days=args.days, hours=args.hours, minutes=args.minutes, grace=args.grace_time)
+    message, new_undecided_models_list = prepare_message(undecided_model_ids=undecided_models.keys(), days=args.days, hours=args.hours, minutes=args.minutes, grace=args.grace)
     save_undecided_models(undecided_models, {k: datetime.now(timezone.utc) for k in new_undecided_models_list})
 
     if message:
