@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import asyncio
 import requests
@@ -67,9 +68,14 @@ def analyze_model_tree(model_id: str, time_threshold: datetime) -> Model | None:
     return None
 
 
-def filter_base_models(models: list[str], time_threshold: datetime) -> list[Model]:
+def filter_base_models(models: list[str], 
+                       undecided_models: list[str],
+                       time_threshold: datetime,
+                       grace_time_threshold: datetime
+                       ) -> tuple[list[Model], list[str]]:
     base_models: list[Model] = []
-    for model_id in tqdm(models, desc="Analyzing models"):
+    new_undecided_models: list[str] = []
+    for model_id in tqdm(models + undecided_models, desc="Analyzing models"):
         is_base = None
         try:
             response = requests.get(f"https://huggingface.co/{model_id}")
@@ -82,14 +88,17 @@ def filter_base_models(models: list[str], time_threshold: datetime) -> list[Mode
                     div_text = div.get_text(strip=True)
                     is_base = "Base model" not in div_text
                 if is_base:
-                    model = analyze_model_tree(model_id, time_threshold)
+                    model = analyze_model_tree(model_id, time_threshold=grace_time_threshold if model_id in undecided_models else time_threshold) 
                     if model:
                         base_models.append(model)
                 break
         except Exception as e:
-            logger.error(f"Failed to analyze model {model_id} - {e.__class__}: {e}")     
-    logger.info(f"Found {len(base_models)} base models from models list")
-    return base_models     
+            logger.error(f"Failed to analyze model {model_id} - {e.__class__}: {e}") 
+        finally:
+            if is_base is None:
+                new_undecided_models.append(model_id)    
+    logger.info(f"Found {len(base_models)} base models from models list, {len(new_undecided_models)} undecided models")
+    return base_models, new_undecided_models     
 
 
 def escape_markdown(text: str, 
@@ -101,12 +110,16 @@ def escape_markdown(text: str,
     return text
 
 
-def prepare_message(*, days: int = 0, hours: int = 0, minutes: int = 0) -> str:
+def prepare_message(*, undecided_model_ids: list[str], grace: int, days: int = 0, hours: int = 0, minutes: int = 0
+                    ) -> tuple[str, list[str]]:
     assert any([days, hours, minutes]), "At least one of the time arguments must be greater than 0"
     delta = timedelta(days=days, hours=hours, minutes=minutes)
+    grace_delta = timedelta(hours=grace)
     time_threshold = datetime.now(timezone.utc) - delta
+    grace_time_threshold = datetime.now(timezone.utc) - grace_delta
+
     model_ids = find_latest_models(time_threshold)
-    models = filter_base_models(model_ids, time_threshold)
+    models, new_undecided_models = filter_base_models(model_ids,undecided_model_ids, time_threshold, grace_time_threshold)
     message = ""
     new_models = [m for m in models if m.is_new]
     modified_models = [m for m in models if not m.is_new]
@@ -131,7 +144,30 @@ def prepare_message(*, days: int = 0, hours: int = 0, minutes: int = 0) -> str:
         else:
             look_back = f"{lb[0][1]} {lb[0][0]}, {lb[1][1]} {lb[1][0]} and {lb[2][1]} {lb[2][0]}"
         message += f"\n🔍 _Looking back {look_back}\\._"
-    return message.strip()
+    return message.strip(), new_undecided_models
+
+
+def load_undecided_models(grace: int) -> dict[str, datetime]:
+    grace_delta = timedelta(hours=grace)
+    grace_time_threshold = datetime.now(timezone.utc) - grace_delta
+    try:
+        with open("undecided_models.json", "r") as f:
+            models = {k: datetime.strftime(v, "%Y-%m-%dT%H:%M:%S") for k, v in json.load(f).items()}
+            models = {k: v for k,v in models.items() if v >= grace_time_threshold}
+            return models
+    except Exception as e:
+        logger.error(f"Failed to load undecided models - {e.__class__}: {e}")
+        return {}
+    
+
+def save_undecided_models(existing_undecided_models: dict[str, datetime], new_undecided_models: dict[str, datetime]) -> None:
+    undecided_models = new_undecided_models | existing_undecided_models
+    undecided_models = {k: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S") for k,v in undecided_models.items()}
+    try:
+        with open("undecided_models.json", "w") as f:
+            json.dump(undecided_models, f)
+    except Exception as e:
+        logger.error(f"Failed to save undecided models - {e.__class__}: {e}")
 
 
 async def send_group_message(message: str):
@@ -144,9 +180,13 @@ def main():
     parser.add_argument("--days", type=int, default=0, help="Number of days to look back")
     parser.add_argument("--hours", type=int, default=0, help="Number of hours to look back")
     parser.add_argument("--minutes", type=int, default=0, help="Number of minutes to look back")
+    parser.add_argument("--grace-time", type=int, default=6, help="Number of hours of grace time for undecided models")
     args = parser.parse_args()
 
-    message = prepare_message(days=args.days, hours=args.hours, minutes=args.minutes)
+    undecided_models = load_undecided_models(grace=args.grace_time)
+    message, new_undecided_models_list = prepare_message(undecided_model_ids=undecided_models.keys(), days=args.days, hours=args.hours, minutes=args.minutes, grace=args.grace_time)
+    save_undecided_models(undecided_models, {k: datetime.now(timezone.utc) for k in new_undecided_models_list})
+
     if message:
         logger.info(f"Sending message:\n{message}")
         asyncio.run(send_group_message(message))
