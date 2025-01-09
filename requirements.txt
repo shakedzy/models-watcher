@@ -1,5 +1,0 @@
-beautifulsoup4
-huggingface_hub
-python-telegram-bot
-requests
-tqdm
