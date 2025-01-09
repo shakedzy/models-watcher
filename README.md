@@ -29,5 +29,5 @@ pip install -r requirements.txt
 
 Then, you may run:
 ```bash
-python watcher.py [--days DAYS] [--hours HOURS] [--minutes MINUTES]
+python watcher.py [--days DAYS] [--hours HOURS] [--minutes MINUTES] [--grace-time GRACE]
 ```
