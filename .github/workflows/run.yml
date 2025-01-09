@@ -1,0 +1,31 @@
+name: Run Watcher
+
+on:
+  workflow_dispatch: 
+  schedule:
+    - cron:  '0 * * * *'  
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: main
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .  
+
+    - name: Run Script
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
+      run: python watcher.py --hours 1
