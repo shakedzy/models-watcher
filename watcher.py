@@ -133,17 +133,6 @@ def prepare_message(*, undecided_model_ids: list[str], grace: int, days: int = 0
             modified_files = [f"{'Content of ' if f.is_directory else ''}{f.filename}{'/' if f.is_directory else ''}" for f in model.files if f.change_time >= time_threshold]
             modified_files = [escape_markdown(f) for f in modified_files]
             message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])}) _\\(Updated files: {', '.join(modified_files)}\\)_\n"
-    if message:
-        lb = [("days", days), ("hours", hours), ("minutes", minutes)]
-        lb = [t for t in lb if t[1] > 0]
-        lb = [(t[0][:-1], t[0]) if t[0] == 1 else (t[0], t[0]) for t in lb]
-        if len(lb) == 1:
-            look_back = f"{lb[0][1]} {lb[0][0]}"
-        elif len(lb) == 2:
-            look_back = f"{lb[0][1]} {lb[0][0]} and {lb[1][1]} {lb[1][0]}"
-        else:
-            look_back = f"{lb[0][1]} {lb[0][0]}, {lb[1][1]} {lb[1][0]} and {lb[2][1]} {lb[2][0]}"
-        message += f"\n🔍 _Looking back {look_back}\\._"
     return message.strip(), new_undecided_models
 
 
