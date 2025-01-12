@@ -44,7 +44,7 @@ def find_latest_models(time_threshold: datetime) -> list[str]:
             continue
         last_modified = model.lastModified
         if last_modified >= time_threshold:
-            recent_models.append(model.modelId)
+            recent_models.append(model.modelId)  # pyright: ignore[reportAttributeAccessIssue]
         else:
             break  
     logger.info(f"Found {len(recent_models)} total models from relevant time-threshold on hugging-face")
@@ -55,14 +55,27 @@ def analyze_model_tree(model_id: str, time_threshold: datetime) -> Model | None:
     response = requests.get(f"https://huggingface.co/{model_id}/tree/main")
     response.raise_for_status()
     soup = BeautifulSoup(response.content, "html.parser")
+
+    # This section looks into the model repository page. 
+    # The <ul> tag examined here is the table seen on the page, 
+    # and each <li> is a list in the table
     for ul in soup.find_all("ul"):
+
+        # Only one <ul> has <time> tags in it, which are the last modified times of the files. 
+        # This is the table we're looking for
         if ul.find_all("time"):
             files: list[ModelFile] = []
             for li in ul.find_all("li"):
-                filename = li.find("a").get_text(strip=True)
-                is_directory = any(['text-blue' in c for c in li.find("svg").get("class")])
+                # First <a> tag in <li> is the filename
+                filename = li.find("a").get_text(strip=True)  
+                # the first <svg> is the icon next to the filename. 
+                # If it has the class "text-blue", it's a directory icon.
+                is_directory = any(['text-blue' in c for c in li.find("svg").get("class")]) 
+                # The <time> tag is the last modified time of the file
                 change_time = datetime.strptime(li.find("time").get("datetime"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
                 files.append(ModelFile(filename=filename, is_directory=is_directory, change_time=change_time))
+
+            # A model is considered new if *all* files are newer than the time threshold
             is_new = all([f.change_time >= time_threshold for f in files])
             return Model(model_id=model_id, files=files, is_new=is_new)  
     return None
@@ -82,21 +95,35 @@ def filter_base_models(models: list[str],
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "html.parser")
             for h2 in soup.find_all("h2"):
+                # Looking at the model tree shown on the model's page
+                # This section shows the relations between the current model and other known models
+                # If exists, it's always found on the <div> below a <h2> starting with the text "Model tree for"
                 if not "Model tree for" in h2.get_text(strip=True): continue   
                 div = h2.find_next_sibling("div")
                 if div:
                     div_text = div.get_text(strip=True)
+                    # On Hugging Face model page, if the model tree displays a model
+                    # with the text "Base model", it's always *another* model, meaning 
+                    # the current model is a derived model and not a base model.
+                    # Base model always has a tree, but without the text "Base model" in it 
+                    # (it has the model's name in it).
                     is_base = "Base model" not in div_text
                 if is_base:
                     model = analyze_model_tree(model_id, time_threshold=grace_time_threshold if model_id in undecided_models else time_threshold) 
                     if model:
                         base_models.append(model)
                 break
+
         except Exception as e:
             logger.error(f"Failed to analyze model {model_id} - {e.__class__}: {e}") 
+
         finally:
             if is_base is None:
-                new_undecided_models.append(model_id)    
+                # In the case where the <div> of the model tree is not found,
+                # the model is placed in the undecided models list, and will be checked again later.
+                # This is to avoid false negatives, as the model might be a base model but the tree is not loaded yet.
+                new_undecided_models.append(model_id)
+
     logger.info(f"Found {len(base_models)} base models from models list, {len(new_undecided_models)} undecided models")
     return base_models, new_undecided_models     
 
@@ -110,14 +137,7 @@ def escape_markdown(text: str,
     return text
 
 
-def prepare_message(*, undecided_model_ids: list[str], grace: int, days: int = 0, hours: int = 0, minutes: int = 0
-                    ) -> tuple[str, list[str]]:
-    assert any([days, hours, minutes]), "At least one of the time arguments must be greater than 0"
-    delta = timedelta(days=days, hours=hours, minutes=minutes)
-    grace_delta = timedelta(hours=grace)
-    time_threshold = datetime.now(timezone.utc) - delta
-    grace_time_threshold = datetime.now(timezone.utc) - grace_delta
-
+def prepare_message(*, undecided_model_ids: list[str], time_threshold: datetime, grace_time_threshold: datetime) -> tuple[str, list[str]]:
     model_ids = find_latest_models(time_threshold)
     models, new_undecided_models = filter_base_models(model_ids,undecided_model_ids, time_threshold, grace_time_threshold)
     message = ""
@@ -136,9 +156,7 @@ def prepare_message(*, undecided_model_ids: list[str], grace: int, days: int = 0
     return message.strip(), new_undecided_models
 
 
-def load_undecided_models(grace: int) -> dict[str, datetime]:
-    grace_delta = timedelta(hours=grace)
-    grace_time_threshold = datetime.now(timezone.utc) - grace_delta
+def load_undecided_models(grace_time_threshold: datetime) -> dict[str, datetime]:
     try:
         with open("undecided_models.json", "r") as f:
             models = {k: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) for k, v in json.load(f).items()}
@@ -169,12 +187,18 @@ def main():
     parser.add_argument("--days", type=int, default=0, help="Number of days to look back")
     parser.add_argument("--hours", type=int, default=0, help="Number of hours to look back")
     parser.add_argument("--minutes", type=int, default=0, help="Number of minutes to look back")
-    parser.add_argument("--grace-time", dest='grace', type=int, default=6, help="Number of hours of grace time for undecided models")
+    parser.add_argument("--grace-time", dest='grace', type=int, default=5, help="Number of hours of grace time for undecided models")
     args = parser.parse_args()
 
-    undecided_models = load_undecided_models(grace=args.grace)
+    assert any([args.days, args.hours, args.minutes]), "At least one of the time arguments (days/hours/minutes) must be greater than 0"
+    delta = timedelta(days=args.days, hours=args.hours, minutes=args.minutes)
+    time_threshold = datetime.now(timezone.utc) - delta
+    grace_delta = timedelta(hours=args.grace)
+    grace_time_threshold = time_threshold - grace_delta
+
+    undecided_models = load_undecided_models(grace_time_threshold)
     logger.info(f"Loaded {len(undecided_models)} undecided models")
-    message, new_undecided_models_list = prepare_message(undecided_model_ids=list(undecided_models.keys()), days=args.days, hours=args.hours, minutes=args.minutes, grace=args.grace)
+    message, new_undecided_models_list = prepare_message(undecided_model_ids=list(undecided_models.keys()), time_threshold=time_threshold, grace_time_threshold=grace_time_threshold)
     save_undecided_models(undecided_models, {k: datetime.now(timezone.utc) for k in new_undecided_models_list})
 
     if message:
