@@ -6,7 +6,7 @@ This repo contains a script that scans Hugging Face models repository for new an
 and send information summary to a dedicated Telegram group.
 
 Unlike the `huggingface_hub`'s `HfApi` object, which cannot tell apart new from modified models, this script analyzes the information
-found on Hugging Face's website (such as the model tree and) to extract additional information about each model, thus deciding if it's
+found on Hugging Face's website (such as the model tree and files last-modification date) to extract additional information about each model, thus deciding if it's
 new or modified.
 
 ## Which models is it looking for?
