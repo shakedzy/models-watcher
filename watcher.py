@@ -157,14 +157,17 @@ def prepare_message(*, undecided_model_ids: list[str], time_threshold: datetime,
 
 
 def load_undecided_models(grace_time_threshold: datetime) -> dict[str, datetime]:
+    loaded_models = {}
     try:
         with open("undecided_models.json", "r") as f:
             models = {k: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) for k, v in json.load(f).items()}
             models = {k: v for k,v in models.items() if v >= grace_time_threshold}
-            return models
+            loaded_models = models
     except Exception as e:
         logger.error(f"Failed to load undecided models - {e.__class__}: {e}")
-        return {}
+    finally:
+        logger.info(f"Loaded {len(loaded_models)} undecided models:\n{loaded_models}")
+        return loaded_models
     
 
 def save_undecided_models(existing_undecided_models: dict[str, datetime], new_undecided_models: dict[str, datetime]) -> None:
@@ -173,8 +176,9 @@ def save_undecided_models(existing_undecided_models: dict[str, datetime], new_un
     try:
         with open("undecided_models.json", "w") as f:
             json.dump(undecided_models, f)
+        logger.info(f"Saved {len(undecided_models)} undecided models:\n{undecided_models}")
     except Exception as e:
-        logger.error(f"Failed to save undecided models - {e.__class__}: {e}")
+        logger.error(f"Failed to save {len(undecided_models)} undecided models - {e.__class__}: {e}")
 
 
 async def send_group_message(message: str):
