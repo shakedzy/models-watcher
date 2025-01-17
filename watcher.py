@@ -3,6 +3,7 @@ import logging
 import asyncio
 import requests
 from telegram import Bot
+from fnmatch import fnmatch
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from argparse import ArgumentParser
@@ -25,12 +26,14 @@ hf_api = HfApi()
 class ModelFile:
     filename: str
     is_directory: bool
+    change_time: datetime
 
 
 @dataclass
 class Model:
     model_id: str
     files: list[ModelFile]
+    is_new: bool
 
 
 def get_top_organizations(max_orgs: int = 100) -> list[str]:
@@ -59,7 +62,9 @@ def get_top_organizations(max_orgs: int = 100) -> list[str]:
     return top_orgs
 
 
-def find_modified_files(model_id: str, time_threshold: datetime) -> list[ModelFile]:
+def find_model_files(model_id: str) -> list[ModelFile]:
+    FILES_TO_IGNORE = ['.git*', '*.md', 'config.json']
+
     response = requests.get(f"https://huggingface.co/{model_id}/tree/main")
     response.raise_for_status()
     soup = BeautifulSoup(response.content, "html.parser")
@@ -75,15 +80,19 @@ def find_modified_files(model_id: str, time_threshold: datetime) -> list[ModelFi
         if ul.find_all("time"):
             
             for li in ul.find_all("li"):
-                # First <a> tag in <li> is the filename
-                filename = li.find("a").get_text(strip=True)  
-                # the first <svg> is the icon next to the filename. 
-                # If it has the class "text-blue", it's a directory icon.
-                is_directory = any(['text-blue' in c for c in li.find("svg").get("class")]) 
-                # The <time> tag is the last modified time of the file
-                change_time = datetime.strptime(li.find("time").get("datetime"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                if change_time >= time_threshold:
-                    modified_files.append(ModelFile(filename=filename, is_directory=is_directory))
+                try:
+                    # First <a> tag in <li> is the filename
+                    filename: str = li.find("a").get_text(strip=True)  
+                    if any(fnmatch(filename, pattern) for pattern in FILES_TO_IGNORE): continue
+                    # the first <svg> is the icon next to the filename. 
+                    # If it has the class "text-blue", it's a directory icon.
+                    is_directory = any(['text-blue' in c for c in li.find("svg").get("class")]) 
+                    # The <time> tag is the last modified time of the file
+                    change_time = datetime.strptime(li.find("time").get("datetime"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                    modified_files.append(ModelFile(filename=filename, is_directory=is_directory, change_time=change_time))
+                
+                except Exception as e:
+                    logger.error(f'Error analyzing file from repo webpage - {e.__class__.__name__}: {e}\n{li}')
 
     return modified_files
 
@@ -109,7 +118,7 @@ def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model
         else:
             break  
     logger.info(f"Found {len(recent_models)} new models on hugging-face")
-    return [Model(m, []) for m in recent_models]
+    return [Model(m, files=[], is_new=True) for m in recent_models]
 
 
 def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
@@ -121,8 +130,15 @@ def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[
         elif model.last_modified >= time_threshold:
             if model.created_at < time_threshold:
                 if model.author in top_orgs or keep_single_model(model):
-                    files = find_modified_files(model.id, time_threshold)
-                    recent_models.append(Model(model_id=model.id, files=files))
+                    files = find_model_files(model.id)
+                    if any(f.change_time >= time_threshold for f in files):
+                        recent_models.append(
+                            Model(
+                                model_id=model.id, 
+                                files=files,
+                                is_new=all(f.change_time >= time_threshold for f in files)
+                            )
+                        )
         else:
             break  
     logger.info(f"Found {len(recent_models)} modified models on hugging-face")
@@ -141,7 +157,14 @@ def escape_markdown(text: str,
 def prepare_message(time_threshold: datetime) -> str:
     top_orgs = get_top_organizations()
     new_models = find_new_models(time_threshold, top_orgs)
-    modified_models = find_modified_models(time_threshold, top_orgs)
+    all_modified_models = find_modified_models(time_threshold, top_orgs)
+
+    modified_models: list[Model] = []
+    for model in all_modified_models:
+        if model.is_new:
+            new_models.append(model)
+        else:
+            modified_models.append(model)
 
     message = ""
     if new_models:
@@ -151,7 +174,8 @@ def prepare_message(time_threshold: datetime) -> str:
     if modified_models:
         message += f"\n🔄 *Modified models:*\n"
         for model in modified_models:
-            modified_files = [f"{'Content of ' if f.is_directory else ''}{f.filename}{'/' if f.is_directory else ''}" for f in model.files]
+            modified_files = [f"{'Contents of ' if f.is_directory else ''}`{f.filename}{'/' if f.is_directory else ''}`" 
+                              for f in model.files if f.change_time >= time_threshold]
             modified_files = [escape_markdown(f) for f in modified_files]
             message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])}) _\\(Updated files: {', '.join(modified_files)}\\)_\n"
     return message.strip()
