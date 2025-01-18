@@ -191,6 +191,7 @@ def main():
     parser.add_argument("--days", type=int, default=0, help="Number of days to look back")
     parser.add_argument("--hours", type=int, default=0, help="Number of hours to look back")
     parser.add_argument("--minutes", type=int, default=0, help="Number of minutes to look back")
+    parser.add_argument("--dry-run", action='store_true', help='Dry run mode (no message will be sent)', dest='dry_run')
     args = parser.parse_args()
 
     assert any([args.days, args.hours, args.minutes]), "At least one of the time arguments (days/hours/minutes) must be greater than 0"
@@ -200,7 +201,10 @@ def main():
     message = prepare_message(time_threshold)
     if message:
         logger.info(f"Sending message:\n{message}")
-        asyncio.run(send_group_message(message))
+        if args.dry_run:
+            logger.info("ℹ️ DRY RUN MODE ACTIVATED (message will not be sent)")
+        else:
+            asyncio.run(send_group_message(message))
     else:
         logger.info("No message to send")
 
