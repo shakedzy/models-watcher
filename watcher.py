@@ -107,7 +107,7 @@ def keep_single_model(model: ModelInfo) -> bool:
 
 
 def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
-    models = hf_api.list_models(sort="created_at", direction=-1, full=True, filter="model-index")
+    models = hf_api.list_models(sort="created_at", direction=-1, full=True)
     recent_models: list[str] = []
     for model in models:
         if model.created_at is None:
@@ -122,7 +122,7 @@ def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model
 
 
 def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
-    models = hf_api.list_models(sort="last_modified", direction=-1, full=True, filter="model-index")
+    models = hf_api.list_models(sort="last_modified", direction=-1, full=True)
     recent_models: list[Model] = []  
     for model in models:
         if model.last_modified is None or model.created_at is None:

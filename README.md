@@ -8,8 +8,7 @@ and sends information summary to a dedicated Telegram group.
 ## Which models is it looking for?
 To try and narrow down the number of models, the watcher performs several filters:
 1. Time based - Only models which were created/modified in a given time-frame
-2. `model-index` - Only models with a valid `model-index` 
-3. Have dependents _or_ from a leading organization - 
+2. Have dependents _or_ from a leading organization - 
    - Models which are used as base models for other models (fine-tunes, quantizations, etc.)
    - ׁModels from leading organizations
 
