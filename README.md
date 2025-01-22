@@ -8,9 +8,7 @@ and sends information summary to a dedicated Telegram group.
 ## Which models is it looking for?
 To try and narrow down the number of models, the watcher performs several filters:
 1. Time based - Only models which were created/modified in a given time-frame
-2. Have dependents _or_ from a leading organization - 
-   - Models which are used as base models for other models (fine-tunes, quantizations, etc.)
-   - ׁModels from leading organizations
+2. From a leading organization - checking only the top 100 _organizations_ based on their trending score
 
 ## Running yourself
 If you'd like to run this script yourself, you'll first need a Bot Token and a Group ID.

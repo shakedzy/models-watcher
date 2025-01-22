@@ -6,9 +6,9 @@ from telegram import Bot
 from fnmatch import fnmatch
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
+from huggingface_hub import HfApi
 from argparse import ArgumentParser
 from collections import defaultdict
-from huggingface_hub import HfApi, ModelInfo
 from datetime import datetime, timedelta, timezone
 
 
@@ -37,7 +37,7 @@ class Model:
 
 
 def get_top_organizations(max_orgs: int = 100) -> list[str]:
-    models = hf_api.list_models(sort='downloads', direction=-1, limit=max_orgs * 5, full=True)
+    models = hf_api.list_models(sort='trending_score', direction=-1, limit=max_orgs * 5, full=True)
     author_stats = defaultdict(lambda: {'model_count': 0, 'total_downloads': 0})
     for model in models:
         author = model.author
@@ -97,15 +97,6 @@ def find_model_files(model_id: str) -> list[ModelFile]:
     return modified_files
 
 
-def keep_single_model(model: ModelInfo) -> bool:
-    card_data = model.card_data
-    if card_data:
-        base_model = card_data.base_model
-        return not base_model
-    else:
-        return False
-
-
 def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
     models = hf_api.list_models(sort="created_at", direction=-1, full=True)
     recent_models: list[str] = []
@@ -113,7 +104,7 @@ def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model
         if model.created_at is None:
             continue
         elif model.created_at >= time_threshold:
-            if model.author in top_orgs or keep_single_model(model):
+            if model.author in top_orgs:
                 recent_models.append(model.id)
         else:
             break  
@@ -129,7 +120,7 @@ def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[
             continue
         elif model.last_modified >= time_threshold:
             if model.created_at < time_threshold:
-                if model.author in top_orgs or keep_single_model(model):
+                if model.author in top_orgs:
                     files = find_model_files(model.id)
                     if any(f.change_time >= time_threshold for f in files):
                         recent_models.append(
