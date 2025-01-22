@@ -32,6 +32,7 @@ class ModelFile:
 @dataclass
 class Model:
     model_id: str
+    author: str
     files: list[ModelFile]
     is_new: bool
 
@@ -99,17 +100,17 @@ def find_model_files(model_id: str) -> list[ModelFile]:
 
 def find_new_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
     models = hf_api.list_models(sort="created_at", direction=-1, full=True)
-    recent_models: list[str] = []
+    recent_models: list[Model] = []
     for model in models:
         if model.created_at is None:
             continue
         elif model.created_at >= time_threshold:
             if model.author in top_orgs:
-                recent_models.append(model.id)
+                recent_models.append(Model(model_id=model.id, author=model.author, files=[], is_new=True))
         else:
             break  
     logger.info(f"Found {len(recent_models)} new models on hugging-face")
-    return [Model(m, files=[], is_new=True) for m in recent_models]
+    return recent_models
 
 
 def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[Model]:
@@ -125,7 +126,8 @@ def find_modified_models(time_threshold: datetime, top_orgs: list[str]) -> list[
                     if any(f.change_time >= time_threshold for f in files):
                         recent_models.append(
                             Model(
-                                model_id=model.id, 
+                                model_id=model.id,
+                                author=model.author, 
                                 files=files,
                                 is_new=all(f.change_time >= time_threshold for f in files)
                             )
@@ -159,16 +161,24 @@ def prepare_message(time_threshold: datetime) -> str:
 
     message = ""
     if new_models:
+        authors = sorted(list(set([model.author for model in new_models])))
         message += f"🆕 *New models:*\n"
-        for model in new_models:
-            message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])})\n"
+        for author in authors:
+            message += f"*{escape_markdown(author)}:*\n"
+            for model in new_models:
+                if model.author == author:
+                    message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])})\n"
     if modified_models:
+        authors = sorted(list(set([model.author for model in modified_models])))
         message += f"\n🔄 *Modified models:*\n"
-        for model in modified_models:
-            modified_files = [f"{'Contents of ' if f.is_directory else ''}`{f.filename}{'/' if f.is_directory else ''}`" 
-                              for f in model.files if f.change_time >= time_threshold]
-            modified_files = [escape_markdown(f) for f in modified_files]
-            message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])}) _\\(Updated files: {', '.join(modified_files)}\\)_\n"
+        for author in authors:
+            message += f"*{escape_markdown(author)}:*\n"
+            for model in modified_models:
+                if model.author == author:
+                    modified_files = [f"{'Contents of ' if f.is_directory else ''}{f.filename}{'/' if f.is_directory else ''}" 
+                                    for f in model.files if f.change_time >= time_threshold]
+                    modified_files = [escape_markdown(f) for f in modified_files]
+                    message += f" • [{escape_markdown(model.model_id)}](https://huggingface.co/{escape_markdown(model.model_id, chars=['('])}) _\\(Updated files: {', '.join(modified_files)}\\)_\n"
     return message.strip()
 
 
